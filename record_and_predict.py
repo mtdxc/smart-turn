@@ -21,6 +21,7 @@ VAD_THRESHOLD = 0.5             # speech probability threshold
 PRE_SPEECH_MS = 200             # keep this many ms before trigger
 STOP_MS = 1000                  # end after this much trailing silence
 MAX_DURATION_SECONDS = 8        # hard cap per segment
+ASR_MODEL_NAME = "paraformer-zh"
 
 DEBUG_SAVE_WAV = False
 TEMP_OUTPUT_WAV = "temp_output.wav"
@@ -33,6 +34,7 @@ ONNX_MODEL_PATH = "silero_vad.onnx"
 
 # Reset VAD internal state every N seconds
 MODEL_RESET_STATES_TIME = 5.0
+_asr_model = None
 
 
 class SileroVAD:
@@ -192,6 +194,34 @@ def _process_segment(segment_audio_f32: np.ndarray):
     print(f"Prediction: {'Complete' if pred == 1 else 'Incomplete'}")
     print(f"Probability of complete: {prob:.4f}")
     print(f"Inference time: {dt_ms:.2f} ms")
+
+    try:
+        text = _transcribe_segment(segment_audio_f32)
+        print(f"text: {text or '[empty]'}\n")
+    except ImportError as exc:
+        print(f"FunASR import failed: {exc}")
+        print("Run: pip install -r requirements_inference.txt")
+    except Exception as exc:
+        print(f"Speech recognition failed: {exc}")
+
+
+def _transcribe_segment(segment_audio_f32: np.ndarray) -> str:
+    global _asr_model
+
+    if _asr_model is None:
+        from funasr import AutoModel
+
+        print(f"Loading FunASR model: {ASR_MODEL_NAME}...")
+        _asr_model = AutoModel(model=ASR_MODEL_NAME, disable_update=True)
+
+    result = _asr_model.generate(input=segment_audio_f32, batch_size_s=300)
+    if not result:
+        return ""
+
+    first_result = result[0]
+    if isinstance(first_result, dict):
+        return str(first_result.get("text", "")).strip()
+    return str(first_result).strip()
 
 
 if __name__ == "__main__":

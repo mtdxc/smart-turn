@@ -2,6 +2,9 @@
 numpy
 onnxruntime
 transformers
+funasr
+torch
+torchaudio
 
 # predict.py/record_and_predict.py samples
 librosa
