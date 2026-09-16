@@ -21,7 +21,6 @@ VAD_THRESHOLD = 0.5             # speech probability threshold
 PRE_SPEECH_MS = 200             # keep this many ms before trigger
 STOP_MS = 1000                  # end after this much trailing silence
 MAX_DURATION_SECONDS = 8        # hard cap per segment
-ASR_MODEL_NAME = "paraformer-zh"
 
 DEBUG_SAVE_WAV = False
 TEMP_OUTPUT_WAV = "temp_output.wav"
@@ -185,6 +184,7 @@ def _process_segment(segment_audio_f32: np.ndarray):
 
     t0 = time.perf_counter()
     result = predict_endpoint(segment_audio_f32)  # expects 16 kHz float32 mono
+    text = _transcribe_segment(segment_audio_f32)
     dt_ms = (time.perf_counter() - t0) * 1000.0
 
     pred = result.get("prediction", 0)
@@ -194,35 +194,44 @@ def _process_segment(segment_audio_f32: np.ndarray):
     print(f"Prediction: {'Complete' if pred == 1 else 'Incomplete'}")
     print(f"Probability of complete: {prob:.4f}")
     print(f"Inference time: {dt_ms:.2f} ms")
+    print(f"text: {text or '[empty]'}\n")
 
-    try:
-        text = _transcribe_segment(segment_audio_f32)
-        print(f"text: {text or '[empty]'}\n")
-    except ImportError as exc:
-        print(f"FunASR import failed: {exc}")
-        print("Run: pip install -r requirements_inference.txt")
-    except Exception as exc:
-        print(f"Speech recognition failed: {exc}")
-
-
-def _transcribe_segment(segment_audio_f32: np.ndarray) -> str:
+def _get_asr_model():
     global _asr_model
 
     if _asr_model is None:
-        from funasr import AutoModel
+        from modelscope import snapshot_download
+        from funasr_onnx import Paraformer
+        # from funasr import AutoModel
+        # _asr_model = AutoModel(model="paraformer-zh", disable_update=True)
+        model_dir = snapshot_download("iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx")
+        print(f"Downloading ASR model to: {model_dir}")
+        _asr_model = Paraformer(
+            model_dir=model_dir,
+            batch_size=1,
+            quantize=True,
+            intra_op_num_threads=4,
+        )
+    return _asr_model
 
-        print(f"Loading FunASR model: {ASR_MODEL_NAME}...")
-        _asr_model = AutoModel(model=ASR_MODEL_NAME, disable_update=True)
+def _transcribe_segment(segment_audio_f32: np.ndarray) -> str:
+    asr_model = _get_asr_model()
+    result = asr_model(segment_audio_f32)
+    return _extract_asr_text(result)
 
-    result = _asr_model.generate(input=segment_audio_f32, batch_size_s=300)
-    if not result:
-        return ""
 
-    first_result = result[0]
-    if isinstance(first_result, dict):
-        return str(first_result.get("text", "")).strip()
-    return str(first_result).strip()
+def _extract_asr_text(result) -> str:
+    if isinstance(result, str):
+        return result.strip()
 
+    if isinstance(result, dict):
+        text = result.get("preds", result.get("text", ""))
+        return text.strip() if isinstance(text, str) else ""
+
+    if isinstance(result, list):
+        return "".join(_extract_asr_text(item) for item in result).strip()
+
+    return ""
 
 if __name__ == "__main__":
     record_and_predict()
