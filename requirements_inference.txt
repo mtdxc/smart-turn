@@ -4,6 +4,10 @@ onnxruntime
 transformers
 funasr-onnx
 modelscope
+datasets==4.4.1
+pillow
+simplejson
+sortedcontainers
 
 # predict.py/record_and_predict.py samples
 librosa
