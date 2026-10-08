@@ -26,9 +26,7 @@ DEBUG_SAVE_WAV = False
 TEMP_OUTPUT_WAV = "temp_output.wav"
 
 # Silero ONNX model
-ONNX_MODEL_URL = (
-    "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
-)
+ONNX_MODEL_URL = ("https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx")
 ONNX_MODEL_PATH = "silero_vad.onnx"
 
 # Reset VAD internal state every N seconds
